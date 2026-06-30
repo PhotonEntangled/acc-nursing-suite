@@ -8,39 +8,50 @@ network access of any kind** — a strict Content-Security-Policy blocks all out
 
 ---
 
-## Run it on her work laptop (recommended)
+## Run it (the simple way) — just open the file
 
-This is the easiest, most reliable way to run the app on a locked-down corporate Windows
-laptop — **no install and no admin rights required**. It uses only what already ships with
-Windows (PowerShell + .NET).
+This is all you need on a locked-down work laptop. **No install, no admin rights, no command,
+no launcher.**
 
-1. **Copy the entire `dist` folder** to the laptop (anywhere — Desktop, Documents, a USB
-   stick). It contains everything needed: `index.html` plus the two launcher files
-   (`Start ACC Suite.cmd` and `launch.ps1`).
-2. **Double-click `Start ACC Suite.cmd`.** A small console window opens and Microsoft Edge
-   launches straight to the local app (e.g. `http://127.0.0.1:8765/`).
-3. **Keep that small console window open** while you use the app. To stop, close the window
-   (or press `Ctrl+C` in it).
+1. **Download** `acc-nursing-suite-dist.zip` from the
+   [latest release](https://github.com/PhotonEntangled/acc-nursing-suite/releases) and **extract**
+   it anywhere (Desktop, Documents, a USB stick).
+2. **Double-click `index.html`.** It opens in your default browser (use **Microsoft Edge** or
+   Chrome).
+3. **Keep your work safe with the two big buttons in the top bar:**
+   - **Save my data** — downloads a backup file (`acc-nursing-data.accdata`) to your Downloads
+     folder. Do this whenever you want to keep your work.
+   - **Load my data** — pick a previously-saved file to bring all your data back.
+4. While the page stays open, your in-progress data is also kept automatically inside the
+   browser on this machine, so a refresh or accidental reload won't lose it. The browser will
+   also warn you if you try to close the tab with **unsaved** changes.
 
-### Why the launcher (instead of just opening the file)?
+That's it. Everything stays on your computer — no server, no network, no telemetry.
 
-Opening `index.html` directly uses a `file://` address, where browsers treat the page as an
-*insecure context* and unpredictably disable key features. The launcher serves the very same
-file over **`http://127.0.0.1` (localhost)**, which browsers treat as a **secure context**, so
-the app gets full, reliable access to:
+> **Tip:** Save my data after a session of edits (and keep the downloaded `.accdata` file
+> somewhere safe, e.g. `Documents`). To continue later, open `index.html` again and click
+> **Load my data**.
 
-- **Autosave-to-file** (the File System Access API),
-- **AES-GCM encryption** of your data file (Web Crypto), and
-- **IndexedDB** storage of the in-browser working copy.
+---
 
-It stays **100% local and private**: the tiny built-in web server binds to the **loopback
-address `127.0.0.1` only** — never `0.0.0.0` — so nothing is ever exposed to the network, and a
-strict Content-Security-Policy still blocks all outbound connections. The server picks a free
-port automatically (it tries `8765` first and scans upward) and only ever serves this one file.
+## Optional / advanced: the localhost launcher
 
-> **No-frills fallback:** you can still just double-click **`index.html`** to open it directly.
-> It works, but the file picker, encryption and storage are more reliable via the launcher
-> above, so the launcher is preferred.
+The `dist` folder also ships two launcher files (`Start ACC Suite.cmd` and `launch.ps1`). These
+are **completely optional** — you only need them if you want **silent autosave to a file you
+choose** (via the browser's File System Access API) instead of the manual *Save my data* /
+*Load my data* buttons.
+
+1. **Double-click `Start ACC Suite.cmd`.** A small console window opens and Microsoft Edge
+   launches the app over **`http://127.0.0.1` (localhost)**.
+2. **Keep that small console window open** while you use the app; close it (or press `Ctrl+C`)
+   to stop.
+
+Why it exists: opening `index.html` directly uses a `file://` address, where browsers treat the
+page as an *insecure context* and hide the File System Access API. Serving the same file over
+localhost makes it a **secure context**, which re-enables the de-emphasised **Open** /
+**Save to file…** buttons in the top bar for silent autosave. It stays **100% local**: the tiny
+built-in server binds to **`127.0.0.1` only** and only ever serves this one file. Encryption and
+the in-browser working copy work in both modes.
 
 ---
 
@@ -87,28 +98,30 @@ All packages cap at **25 consults** — consults 26+ bill as NS04.
 
 ## How to USE it (no install)
 
-1. Open the **`dist/index.html`** file by double-clicking it. It opens in your default browser —
-   use **Microsoft Edge** (or Chrome).
+1. Open **`index.html`** by double-clicking it. It opens in your default browser — use
+   **Microsoft Edge** (or Chrome).
 2. The app starts with a few obviously-fake **SAMPLE** records so you can explore. Clear them any
    time in **Settings → Clear sample data**.
-3. **Save your data to a file you control:**
-   - Click **"Save to file…"** in the top bar and choose where to create your `.accdata` file
-     (e.g. `Documents\acc-nursing-data.accdata`).
-   - After that, **autosave** keeps that file updated about a second after each change.
-   - Next time, click **"Open"** to re-open it (the app also remembers it between sessions and will
-     ask permission to keep saving).
-4. **Your work is never lost** even before you pick a file — a working copy is kept inside the
-   browser's local storage on this machine.
+3. **Save / load your work with the top-bar buttons:**
+   - **Save my data** downloads `acc-nursing-data.accdata` (your full backup). Keep it somewhere
+     safe like `Documents`.
+   - **Load my data** reads a saved file back in (it replaces the current data). Accepts
+     `.accdata` and `.json`.
+   - The status next to the buttons shows **"Unsaved changes — click Save my data"** (amber) or
+     **"Saved · <time>"** (green) so you always know where you stand.
+4. **Your work is never lost on refresh** — a working copy is kept inside this browser on this
+   machine, and the browser warns you before closing a tab with unsaved changes.
 5. **Optional encryption:** in **Settings → Security**, set a passphrase and enable encryption. The
-   data file is then AES-GCM encrypted and you'll be asked for the passphrase when you open it.
+   saved file is then AES-GCM encrypted, and **Load my data** will prompt for the passphrase.
 6. **Idle auto-lock:** the app locks itself after the configured minutes of inactivity (default 15).
 7. **Export to Excel:** **Export Center → Export Excel workbook** produces the full `.xlsx` toolkit
    (Start Here, Billing Log, Year Summary, NS04-NS05 Approvals, Complex Cases, Decline Tracker) with
    dropdowns, conditional formatting and computed totals.
 
-> **Note on the file picker:** "Save to file…" / "Open" use the browser's File System Access API.
-> If your browser blocks it for local files, just use **Export Center → JSON backup / restore**
-> instead — your data is always safe in the in-browser working copy regardless.
+> **Advanced (optional):** if you run the app via the localhost launcher (see above), two extra
+> de-emphasised buttons — **Open** and **Save to file…** — appear in the top bar for *silent
+> autosave* to a file you choose. They never appear when you just open `index.html`, which is the
+> intended simple experience. **Export Center → JSON backup / restore** also remains available.
 
 ### Privacy
 
@@ -170,4 +183,6 @@ acc-nursing-suite/
 ### Tech stack
 
 Vite · React · TypeScript · Tailwind CSS · Zustand · Recharts · ExcelJS · `vite-plugin-singlefile`.
-Persistence: File System Access API + IndexedDB working copy + Web Crypto (AES-GCM).
+Persistence: manual **Save my data / Load my data** (JSON `.accdata` download/upload, works on
+`file://`) + IndexedDB working copy for crash recovery + Web Crypto (AES-GCM) encryption.
+Optional File System Access API autosave when served over localhost.

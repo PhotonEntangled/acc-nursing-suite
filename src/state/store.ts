@@ -49,6 +49,12 @@ export interface AppStatus {
   saveState: SaveState;
   lastSavedAt?: number;
   saveError?: string;
+  // Manual-persistence model: true whenever in-app data has changed since the
+  // last "Save my data" download or "Load my data". Drives the TopBar warning
+  // and the beforeunload guard.
+  dirty: boolean;
+  // Timestamp of the last successful manual Save/Load my data (or file save).
+  lastExportAt?: number;
 }
 
 interface StoreState {
@@ -67,7 +73,11 @@ interface StoreState {
   lock: () => void;
   unlock: (passphrase?: string) => Promise<boolean>;
 
-  // file ops
+  // manual persistence (primary; works on file://)
+  saveMyData: (filename?: string) => Promise<void>;
+  loadMyData: (text: string, passphrase?: string) => Promise<void>;
+
+  // file ops (File System Access API — optional/advanced)
   connectNewFile: () => Promise<void>;
   openExistingFile: () => Promise<void>;
   exportJsonDownload: () => void;
@@ -143,12 +153,24 @@ async function persistAll(get: () => StoreState) {
     const text = await serialize(data, usePass);
     await saveWorkingCopy(text);
     const handle = get().fileHandle;
+    let wroteToFile = false;
     if (handle) {
       const ok = await verifyPermission(handle, true);
-      if (ok) await writeToHandle(handle, text);
+      if (ok) {
+        await writeToHandle(handle, text);
+        wroteToFile = true;
+      }
     }
     useStore.setState((s) => ({
-      status: { ...s.status, saveState: 'saved', lastSavedAt: Date.now(), saveError: undefined },
+      status: {
+        ...s.status,
+        saveState: 'saved',
+        lastSavedAt: Date.now(),
+        saveError: undefined,
+        // Writing to a real file the user controls counts as a save: clear
+        // dirty. The silent IndexedDB working copy alone does NOT clear it.
+        ...(wroteToFile ? { dirty: false, lastExportAt: Date.now() } : {}),
+      },
     }));
   } catch (err) {
     useStore.setState((s) => ({
@@ -158,7 +180,10 @@ async function persistAll(get: () => StoreState) {
 }
 
 function mutate(get: () => StoreState, updater: (data: AppData) => AppData) {
-  useStore.setState((s) => ({ data: updater(s.data) }));
+  useStore.setState((s) => ({
+    data: updater(s.data),
+    status: s.status.dirty ? s.status : { ...s.status, dirty: true },
+  }));
   scheduleSave(get);
 }
 
@@ -169,6 +194,7 @@ export const useStore = create<StoreState>((set, get) => ({
     fsaSupported: isFileSystemAccessSupported(),
     hasFileHandle: false,
     saveState: 'idle',
+    dirty: false,
   },
   locked: false,
   needsPassphrase: false,
@@ -290,6 +316,49 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
+  saveMyData: async (filename = 'acc-nursing-data.accdata') => {
+    const { data } = get();
+    // Mirror the file-save path: encrypt with the session passphrase when
+    // encryption is enabled in settings, otherwise write readable JSON.
+    const usePass = data.settings.encryptionEnabled ? sessionPassphrase : undefined;
+    const text = await serialize(data, usePass);
+    downloadText(filename, text);
+    set({
+      status: {
+        ...get().status,
+        dirty: false,
+        lastExportAt: Date.now(),
+        saveState: 'saved',
+        lastSavedAt: Date.now(),
+        saveError: undefined,
+      },
+    });
+  },
+
+  loadMyData: async (text: string, passphrase?: string) => {
+    const encrypted = isEncryptedFile(text);
+    // Use the explicitly-provided passphrase, falling back to the session one.
+    const pass = passphrase ?? sessionPassphrase;
+    if (encrypted && !pass) throw new PassphraseRequiredError();
+    // deserialize throws PassphraseRequiredError / WrongPassphraseError as needed.
+    const data = await deserialize(text, pass);
+    // Adopt the working passphrase so subsequent silent saves stay encrypted.
+    if (encrypted && pass) sessionPassphrase = pass;
+    set({
+      data,
+      status: {
+        ...get().status,
+        dirty: false,
+        lastExportAt: Date.now(),
+        saveState: 'saved',
+        lastSavedAt: Date.now(),
+        saveError: undefined,
+      },
+    });
+    // Persist the freshly-loaded data into the IndexedDB working copy.
+    scheduleSave(get);
+  },
+
   connectNewFile: async () => {
     const handle = await pickSaveFile();
     const usePass = get().data.settings.encryptionEnabled ? sessionPassphrase : undefined;
@@ -298,7 +367,15 @@ export const useStore = create<StoreState>((set, get) => ({
     await saveFileHandle(handle);
     set({
       fileHandle: handle,
-      status: { ...get().status, hasFileHandle: true, fileName: handle.name, saveState: 'saved', lastSavedAt: Date.now() },
+      status: {
+        ...get().status,
+        hasFileHandle: true,
+        fileName: handle.name,
+        saveState: 'saved',
+        lastSavedAt: Date.now(),
+        dirty: false,
+        lastExportAt: Date.now(),
+      },
     });
   },
 
@@ -325,7 +402,15 @@ export const useStore = create<StoreState>((set, get) => ({
       fileHandle: handle,
       locked: false,
       needsPassphrase: false,
-      status: { ...get().status, hasFileHandle: true, fileName: handle.name, saveState: 'saved', lastSavedAt: Date.now() },
+      status: {
+        ...get().status,
+        hasFileHandle: true,
+        fileName: handle.name,
+        saveState: 'saved',
+        lastSavedAt: Date.now(),
+        dirty: false,
+        lastExportAt: Date.now(),
+      },
     });
     scheduleSave(get);
   },
@@ -362,7 +447,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   loadSample: () => {
-    set({ data: sampleData() });
+    set((s) => ({ data: sampleData(), status: { ...s.status, dirty: true } }));
     scheduleSave(get);
   },
 
@@ -386,7 +471,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   resetToEmpty: () => {
     const settings = get().data.settings;
-    set({ data: { ...emptyData(), settings: { ...settings } } });
+    set((s) => ({ data: { ...emptyData(), settings: { ...settings } }, status: { ...s.status, dirty: true } }));
     scheduleSave(get);
   },
 

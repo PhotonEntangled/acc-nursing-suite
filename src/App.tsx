@@ -40,6 +40,20 @@ export default function App() {
     applyTheme(settings);
   }, [settings]);
 
+  // Warn before leaving with unsaved (un-exported) changes. Only fires the
+  // browser's native "leave site?" prompt when there are dirty changes; in-app
+  // navigation never triggers an unload so this stays quiet during normal use.
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (useStore.getState().status.dirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
   // Activity tracking for idle auto-lock.
   const activityThrottle = useRef(0);
   useEffect(() => {
